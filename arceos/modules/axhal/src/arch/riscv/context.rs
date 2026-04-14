@@ -1,4 +1,3 @@
-use core::arch::asm;
 use memory_addr::VirtAddr;
 #[cfg(feature = "uspace")]
 use memory_addr::PhysAddr;
@@ -252,7 +251,7 @@ impl UspaceContext {
     /// This function is unsafe because it changes processor mode and the stack.
     #[inline(never)]
     #[no_mangle]
-    pub unsafe fn enter_uspace(&self, kstack_top: VirtAddr) -> ! {
+    pub unsafe fn enter_uspace(&self, kstack_top: VirtAddr) {
         use riscv::register::{sepc, sscratch};
 
         super::disable_irqs();
@@ -281,9 +280,9 @@ impl UspaceContext {
     }
 }
 
-#[naked]
+// #[unsafe(naked)]
 unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task: &TaskContext) {
-    asm!(
+    core::arch::asm!(
         "
         // save old context (callee-saved registers)
         STR     ra, a0, 0
