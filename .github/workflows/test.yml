@@ -61,6 +61,7 @@ jobs:
         id: basic_points
         run: |
           qemu-system-riscv64 --version
+          cargo update -p indexmap --precise 2.6.0
           cargo --version
 
           ./scripts/total-test.sh | tee tmp.txt
