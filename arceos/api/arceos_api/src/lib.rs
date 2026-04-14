@@ -3,6 +3,8 @@
 //! [ArceOS]: https://github.com/arceos-org/arceos
 
 #![no_std]
+#![feature(doc_auto_cfg)]
+#![feature(doc_cfg)]
 #![allow(unused_imports)]
 
 #[cfg(any(

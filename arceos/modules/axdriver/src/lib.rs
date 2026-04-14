@@ -55,6 +55,7 @@
 //! [dyn]: https://doc.rust-lang.org/std/keyword.dyn.html
 
 #![no_std]
+#![feature(doc_auto_cfg)]
 #![feature(associated_type_defaults)]
 
 #[macro_use]
