@@ -18,6 +18,15 @@ macro_rules! print {
 macro_rules! println {
     () => { $crate::print!("\n") };
     ($($arg:tt)*) => {
+        $crate::io::__print_impl(format_args!("{}\n", format_args!($($arg)*)));
+    }
+}
+
+/// Prints to the standard output, with a newline and red color
+#[macro_export]
+macro_rules! colorln {
+    () => { $crate::print!("\n") };
+    ($($arg:tt)*) => {
         $crate::io::__print_impl(format_args!("\x1b[31m{}\n\x1b[0m", format_args!($($arg)*)));
     }
 }
