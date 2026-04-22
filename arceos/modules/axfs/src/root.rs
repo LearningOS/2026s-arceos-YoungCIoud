@@ -136,8 +136,17 @@ impl VfsNodeOps for RootDirectory {
         self.lookup_mounted_fs(src_path, |fs, rest_path| {
             if rest_path.is_empty() {
                 ax_err!(PermissionDenied) // cannot rename mount points
+
             } else {
-                fs.root_dir().rename(rest_path, dst_path)
+                self.lookup_mounted_fs(dst_path, |dst_fs, dst_rest_path| {
+                    if dst_rest_path.is_empty() {
+                        ax_err!(PermissionDenied) // cannot rename to mount points
+                    } else if !Arc::ptr_eq(&fs, &dst_fs) {
+                        ax_err!(InvalidInput) // rename only works within the same mounted fs
+                    } else {
+                        fs.root_dir().rename(rest_path, dst_rest_path)
+                    }
+                })
             }
         })
     }
