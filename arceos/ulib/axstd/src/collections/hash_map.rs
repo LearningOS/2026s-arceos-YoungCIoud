@@ -1,5 +1,5 @@
 // extern crate hashbrown;
-extern crate alloc;
+// extern crate alloc;
 
 use hashbrown::DefaultHashBuilder;
 
