@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use core::ffi::{c_void, c_char, c_int};
+use std::vec;
 use axhal::arch::TrapFrame;
 use axhal::trap::{register_trap_handler, SYSCALL};
 use axerrno::LinuxError;
@@ -8,6 +9,7 @@ use axtask::current;
 use axtask::TaskExtRef;
 use axhal::paging::MappingFlags;
 use arceos_posix_api as api;
+use memory_addr::{PAGE_SIZE_4K, VirtAddr, VirtAddrRange};
 
 const SYS_IOCTL: usize = 29;
 const SYS_OPENAT: usize = 56;
@@ -133,14 +135,98 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
 
 #[allow(unused_variables)]
 fn sys_mmap(
-    addr: *mut usize,
-    length: usize,
-    prot: i32,
-    flags: i32,
+    addr: *mut usize, // 虚拟地址的提示地址
+    length: usize, // 映射长度
+    prot: i32, // 访问权限
+    flags: i32, // 映射方式
     fd: i32,
-    _offset: isize,
+    offset: isize,
 ) -> isize {
-    unimplemented!("no sys_mmap!");
+    let flags = if let Some(flags) = MmapFlags::from_bits(flags) {
+        flags
+    } else {
+        return -LinuxError::EINVAL.code() as isize;
+    };
+    
+    // 两者只能启用一个
+    if !(flags.contains(MmapFlags::MAP_PRIVATE) ^ flags.contains(MmapFlags::MAP_SHARED)) {
+        return -LinuxError::EINVAL.code() as isize;
+    }
+    if flags.contains(MmapFlags::MAP_SHARED) {
+        // unimplemented!("feature MAP_SHARED is unimplemented");
+        return -LinuxError::ENOSYS.code() as isize;
+    }
+
+    // 获取当前的地址空间
+    let curr = axtask::current();
+    let aspace = curr
+        .task_ext()
+        .aspace
+        .clone();
+    let mut aspace = aspace.lock();
+
+
+    // read contents from file if map_anonymous is false
+    let mut contents = vec![0u8; length];
+    if !flags.contains(MmapFlags::MAP_ANONYMOUS) {
+        if fd < 0 {
+            return -LinuxError::EINVAL.code() as isize;
+        } else {
+
+            let old_off = api::sys_lseek(fd, 0, 1);
+            if old_off < 0 {
+                return old_off as isize;
+            }
+
+            if api::sys_lseek(fd, offset as i64, 0) < 0 {
+                return -LinuxError::EINVAL.code() as isize;
+            }
+
+            let n = api::sys_read(fd, contents.as_mut_ptr() as *mut c_void, length);
+            if n < 0 {
+                return n as isize;
+            }
+
+            let _ = api::sys_lseek(fd, old_off, 0);
+            contents.truncate(n as usize);
+        }
+    }
+
+    // 获得权限
+    let mmapflags = if let Some(mmapport) = MmapProt::from_bits(prot) {
+        MappingFlags::from(mmapport)
+    } else {
+        return -LinuxError::EINVAL.code() as isize;
+    };
+
+    // 按页对齐
+    let length = (length + PAGE_SIZE_4K - 1) & !(PAGE_SIZE_4K - 1);
+
+    let limit = VirtAddrRange::from_start_size(aspace.base(), aspace.size());
+    let start = VirtAddr::from_usize(addr as usize);
+    let start = if !flags.contains(MmapFlags::MAP_FIXED) {
+        aspace.find_free_area(start, length, limit)
+    } else {
+        Some(start)
+    };
+
+    if let Some(start) = start {
+        if let Ok(_) = aspace.map_alloc(start, length, mmapflags, true) {
+            // 用0扩充 contents 至分配的页面大小
+            let have = contents.len();
+            for _ in 0..length - have {
+                contents.push(0);
+            }
+            if aspace.write(start, &contents).is_err() {
+                return -LinuxError::EFAULT.code() as isize;
+            }
+            start.as_usize() as isize
+        } else {
+            -LinuxError::ENOMEM.code() as isize
+        }
+    } else {
+        -LinuxError::ENOMEM.code() as isize
+    }
 }
 
 fn sys_openat(dfd: c_int, fname: *const c_char, flags: c_int, mode: api::ctypes::mode_t) -> isize {
